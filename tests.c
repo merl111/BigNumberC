@@ -60,6 +60,13 @@ int main(){
     x = BN_bn2dec(result);
     printf("result mul a*b: %s\n", x);
 
+    BN_dec2bn(&a, "8");
+    BN_dec2bn(&b, "-3");
+
+    BN_rshift(result, a, 3);
+    x = BN_bn2dec(result);
+    printf("result neg lshift a: %s\n", x);
+
     BN_free(a);
     BN_free(b);
     BN_free(c);

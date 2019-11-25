@@ -1539,9 +1539,9 @@ end:
 err:
 	bn_check_top(r);
 	//BN_CTX_end(ctx);
+	BN_free(rr);
 	return (ret);
 }
-
 
 BIGNUM *BN_bin2bn(const unsigned char *s, int len, BIGNUM *ret)
 {
