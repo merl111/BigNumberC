@@ -93,12 +93,14 @@ int BN_rshift(BIGNUM *r, const BIGNUM *a, int n);
 void freezero(void *ptr, size_t sz);
 void BN_free(BIGNUM *a);
 
+
 BIGNUM *BN_new(void);
 void BN_init(BIGNUM *a);
 BIGNUM *BN_copy(BIGNUM *a, const BIGNUM *b);
 BIGNUM *bn_expand2(BIGNUM *b, int words);
 BIGNUM *BN_dup(const BIGNUM *a);
 
+BN_ULONG bn_mul_words(BN_ULONG *rp, const BN_ULONG *ap, int num, BN_ULONG w);
 BN_ULONG BN_div_word(BIGNUM *a, BN_ULONG w);
 /* forward declerations end */
 
@@ -239,6 +241,81 @@ BN_ULONG BN_div_word(BIGNUM *a, BN_ULONG w);
 /* ASM end*/
 
 /* internal functions start */
+
+BN_ULONG bn_mul_add_words(BN_ULONG *rp, const BN_ULONG *ap, int num, BN_ULONG w)
+{
+	BN_ULONG c1 = 0;
+
+	//assert(num >= 0);
+	if (num <= 0)
+		return (c1);
+
+#ifndef OPENSSL_SMALL_FOOTPRINT
+	while (num & ~3) {
+		mul_add(rp[0], ap[0], w, c1);
+		mul_add(rp[1], ap[1], w, c1);
+		mul_add(rp[2], ap[2], w, c1);
+		mul_add(rp[3], ap[3], w, c1);
+		ap += 4;
+		rp += 4;
+		num -= 4;
+	}
+#endif
+	while (num) {
+		mul_add(rp[0], ap[0], w, c1);
+		ap++;
+		rp++;
+		num--;
+	}
+
+	return (c1);
+}
+
+void bn_mul_normal(BN_ULONG *r, BN_ULONG *a, int na, BN_ULONG *b, int nb)
+{
+	BN_ULONG *rr;
+
+#ifdef BN_COUNT
+	fprintf(stderr, " bn_mul_normal %d * %d\n", na, nb);
+#endif
+
+	if (na < nb) {
+		int itmp;
+		BN_ULONG *ltmp;
+
+		itmp = na;
+		na = nb;
+		nb = itmp;
+		ltmp = a;
+		a = b;
+		b = ltmp;
+
+	}
+	rr = &(r[na]);
+	if (nb <= 0) {
+		(void)bn_mul_words(r, a, na, 0);
+		return;
+	} else
+		rr[0] = bn_mul_words(r, a, na, b[0]);
+
+	for (;;) {
+		if (--nb <= 0)
+			return;
+		rr[1] = bn_mul_add_words(&(r[1]), a, na, b[1]);
+		if (--nb <= 0)
+			return;
+		rr[2] = bn_mul_add_words(&(r[2]), a, na, b[2]);
+		if (--nb <= 0)
+			return;
+		rr[3] = bn_mul_add_words(&(r[3]), a, na, b[3]);
+		if (--nb <= 0)
+			return;
+		rr[4] = bn_mul_add_words(&(r[4]), a, na, b[4]);
+		rr += 4;
+		r += 4;
+		b += 4;
+	}
+}
 
 /* Divide h,l by d and return the result. */
 /* I need to test this some more :-(  <- from libress */
@@ -1388,6 +1465,83 @@ BIGNUM *BN_new(void)
 	bn_check_top(ret);
 	return (ret);
 }
+
+int BN_mul(BIGNUM *r, const BIGNUM *a, const BIGNUM *b)
+{
+	int ret = 0;
+	int top, al, bl;
+	BIGNUM *rr;
+#if defined(BN_MUL_COMBA)
+	int i;
+#endif
+
+#ifdef BN_COUNT
+	fprintf(stderr, "BN_mul %d * %d\n",a->top,b->top);
+#endif
+
+	bn_check_top(a);
+	bn_check_top(b);
+	bn_check_top(r);
+
+	al = a->top;
+	bl = b->top;
+
+	if ((al == 0) || (bl == 0)) {
+		BN_zero(r);
+		return (1);
+	}
+	top = al + bl;
+
+	//BN_CTX_start(ctx);
+	if ((r == a) || (r == b)) {
+		//if ((rr = BN_CTX_get(ctx)) == NULL)
+		if ((rr = BN_create()) == NULL)
+			goto err;
+	} else
+		rr = r;
+	rr->neg = a->neg ^ b->neg;
+
+#if defined(BN_MUL_COMBA)
+	i = al - bl;
+#endif
+#ifdef BN_MUL_COMBA
+	if (i == 0) {
+# if 0
+		if (al == 4) {
+			if (bn_wexpand(rr, 8) == NULL)
+				goto err;
+			rr->top = 8;
+			bn_mul_comba4(rr->d, a->d, b->d);
+			goto end;
+		}
+# endif
+		if (al == 8) {
+			if (bn_wexpand(rr, 16) == NULL)
+				goto err;
+			rr->top = 16;
+			bn_mul_comba8(rr->d, a->d, b->d);
+			goto end;
+		}
+	}
+#endif /* BN_MUL_COMBA */
+	if (bn_wexpand(rr, top) == NULL)
+		goto err;
+	rr->top = top;
+	bn_mul_normal(rr->d, a->d, al, b->d, bl);
+
+#if defined(BN_MUL_COMBA)
+end:
+#endif
+	bn_correct_top(rr);
+	if (r != rr)
+		BN_copy(r, rr);
+	ret = 1;
+err:
+	bn_check_top(r);
+	//BN_CTX_end(ctx);
+	return (ret);
+}
+
 
 BIGNUM *BN_bin2bn(const unsigned char *s, int len, BIGNUM *ret)
 {

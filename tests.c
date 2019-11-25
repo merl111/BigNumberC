@@ -45,14 +45,26 @@ int main(){
     printf("result rshift b: %s\n", x);
 
 
-    BN_dec2bn(&a, "3");
-    BN_dec2bn(&b, "1");
+    BN_dec2bn(&a, "1");
+    BN_dec2bn(&b, "3");
 
-    BN_lshift1(b, a);
-    x = BN_bn2dec(a);
+    BN_lshift(result, a, 3);
+    x = BN_bn2dec(result);
     printf("result lshift a: %s\n", x);
     x = BN_bn2dec(b);
     printf("result lshift b: %s\n", x);
+
+    BN_dec2bn(&a, "3000000000000000000000000000000000000000000000000000000000");
+    BN_dec2bn(&b, "-2");
+    BN_mul(result, a, b);
+    x = BN_bn2dec(result);
+    printf("result mul a*b: %s\n", x);
+
+    BN_free(a);
+    BN_free(b);
+    BN_free(c);
+    BN_free(result);
+
     return 0;
 }
 
