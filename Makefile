@@ -6,7 +6,7 @@ FLAGS = -lm -O3 -Wall \
 tests:
 	gcc tests.c -g3 -o tests $(FLAGS)
 	./tests
-	rm tests
+	#rm tests
 
 .PHONY: tests examples
 

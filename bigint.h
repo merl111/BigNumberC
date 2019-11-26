@@ -261,7 +261,6 @@ BN_ULONG bn_mul_add_words(BN_ULONG *rp, const BN_ULONG *ap, int num, BN_ULONG w)
 	if (num <= 0)
 		return (c1);
 
-#ifndef OPENSSL_SMALL_FOOTPRINT
 	while (num & ~3) {
 		mul_add(rp[0], ap[0], w, c1);
 		mul_add(rp[1], ap[1], w, c1);
@@ -271,7 +270,6 @@ BN_ULONG bn_mul_add_words(BN_ULONG *rp, const BN_ULONG *ap, int num, BN_ULONG w)
 		rp += 4;
 		num -= 4;
 	}
-#endif
 	while (num) {
 		mul_add(rp[0], ap[0], w, c1);
 		ap++;
@@ -450,14 +448,9 @@ BN_ULONG BN_mod_word(const BIGNUM *a, BN_ULONG w)
 	bn_check_top(a);
 	w &= BN_MASK2;
 	for (i = a->top - 1; i >= 0; i--) {
-#ifndef BN_LLONG
 		ret = ((ret << BN_BITS4) | ((a->d[i] >> BN_BITS4) &
 		    BN_MASK2l)) % w;
 		ret = ((ret << BN_BITS4) | (a->d[i] & BN_MASK2l)) % w;
-#else
-		ret = (BN_ULLONG)(((ret << (BN_ULLONG)BN_BITS2) |
-		    a->d[i]) % (BN_ULLONG)w);
-#endif
 	}
 	return ((BN_ULONG)ret);
 }
@@ -604,60 +597,19 @@ int BN_mul_word(BIGNUM *a, BN_ULONG w)
 
 void BN_clear_free(BIGNUM *a)
 {
-	int i;
+	//int i;
 
 	if (a == NULL)
 		return;
 	bn_check_top(a);
-	if (a->d != NULL && !(BN_get_flags(a, BN_FLG_STATIC_DATA)))
+	if (a->d != NULL )//&& !(BN_get_flags(a, BN_FLG_STATIC_DATA)))
 		freezero(a->d, a->dmax * sizeof(a->d[0]));
-	i = BN_get_flags(a, BN_FLG_MALLOCED);
+	//i = BN_get_flags(a, BN_FLG_MALLOCED);
 	explicit_bzero(a, sizeof(BIGNUM));
-	if (i)
-		free(a);
+	//if (i)
+    free(a);
 }
 
-#ifdef BN_LLONG
-BN_ULONG bn_add_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n)
-{
-	BN_ULLONG ll = 0;
-
-	assert(n >= 0);
-	if (n <= 0)
-		return ((BN_ULONG)0);
-
-#ifndef OPENSSL_SMALL_FOOTPRINT
-	while (n & ~3) {
-		ll += (BN_ULLONG)a[0] + b[0];
-		r[0] = (BN_ULONG)ll & BN_MASK2;
-		ll >>= BN_BITS2;
-		ll += (BN_ULLONG)a[1] + b[1];
-		r[1] = (BN_ULONG)ll & BN_MASK2;
-		ll >>= BN_BITS2;
-		ll += (BN_ULLONG)a[2] + b[2];
-		r[2] = (BN_ULONG)ll & BN_MASK2;
-		ll >>= BN_BITS2;
-		ll += (BN_ULLONG)a[3] + b[3];
-		r[3] = (BN_ULONG)ll & BN_MASK2;
-		ll >>= BN_BITS2;
-		a += 4;
-		b += 4;
-		r += 4;
-		n -= 4;
-	}
-#endif
-	while (n) {
-		ll += (BN_ULLONG)a[0] + b[0];
-		r[0] = (BN_ULONG)ll & BN_MASK2;
-		ll >>= BN_BITS2;
-		a++;
-		b++;
-		r++;
-		n--;
-	}
-	return ((BN_ULONG)ll);
-}
-#else /* !BN_LLONG */
 BN_ULONG bn_add_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n)
 {
 	BN_ULONG c, l, t;
@@ -666,7 +618,6 @@ BN_ULONG bn_add_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n)
 		return ((BN_ULONG)0);
 
 	c = 0;
-#ifndef OPENSSL_SMALL_FOOTPRINT
 	while (n & ~3) {
 		t = a[0];
 		t = (t + c) & BN_MASK2;
@@ -697,7 +648,6 @@ BN_ULONG bn_add_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n)
 		r += 4;
 		n -= 4;
 	}
-#endif
 	while (n) {
 		t = a[0];
 		t = (t + c) & BN_MASK2;
@@ -712,7 +662,6 @@ BN_ULONG bn_add_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n)
 	}
 	return ((BN_ULONG)c);
 }
-#endif /* !BN_LLONG */
 
 BN_ULONG bn_sub_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n)
 {
@@ -722,7 +671,6 @@ BN_ULONG bn_sub_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n)
 	if (n <= 0)
 		return ((BN_ULONG)0);
 
-#ifndef OPENSSL_SMALL_FOOTPRINT
 	while (n&~3) {
 		t1 = a[0];
 		t2 = b[0];
@@ -749,7 +697,6 @@ BN_ULONG bn_sub_words(BN_ULONG *r, const BN_ULONG *a, const BN_ULONG *b, int n)
 		r += 4;
 		n -= 4;
 	}
-#endif
 	while (n) {
 		t1 = a[0];
 		t2 = b[0];
@@ -793,7 +740,6 @@ static BN_ULONG *bn_expand_internal(const BIGNUM *b, int words)
 		//BNerror(ERR_R_MALLOC_FAILURE);
 		return (NULL);
 	}
-#if 1
 	B = b->d;
 	/* Check if the previous number needs to be copied */
 	if (B != NULL) {
@@ -826,11 +772,6 @@ static BN_ULONG *bn_expand_internal(const BIGNUM *b, int words)
 			A[0] = B[0];
 		}
 	}
-
-#else
-	memset(A, 0, sizeof(BN_ULONG) * words);
-	memcpy(A, b->d, sizeof(b->d[0]) * b->top);
-#endif
 
 	return (a);
 }
@@ -1377,8 +1318,8 @@ int BN_dec2bn(BIGNUM **bn, const char *a)
 		a++;
 	}
 
-	for (i = 0; i <= (INT_MAX / 4) && isdigit((unsigned char)a[i]); i++)
-		;
+	for (i = 0; i <= (INT_MAX / 4) && isdigit((unsigned char)a[i]); i++);
+
 	if (i > INT_MAX / 4)
 		goto err;
 
@@ -1457,14 +1398,13 @@ void BN_init(BIGNUM *a)
 	bn_check_top(a);
 }
 
-BIGNUM *BN_create(void)
-{
-    BIGNUM *a = BN_new();
-    BN_init(a);
-
-    return a;
-
-}
+//BIGNUM *BN_create(void)
+//{
+//    BIGNUM *a = BN_new();
+//    BN_init(a);
+//
+//    return a;
+//}
 
 BIGNUM *BN_new(void)
 {
@@ -1479,6 +1419,7 @@ BIGNUM *BN_new(void)
 	ret->neg = 0;
 	ret->dmax = 0;
 	ret->d = NULL;
+	memset(ret, 0, sizeof(BIGNUM));
 	bn_check_top(ret);
 	return (ret);
 }
@@ -1510,7 +1451,7 @@ int BN_mul(BIGNUM *r, const BIGNUM *a, const BIGNUM *b)
 	top = al + bl;
 
 	if ((r == a) || (r == b)) {
-		if ((rr = BN_create()) == NULL)
+		if ((rr = BN_new()) == NULL)
 			goto err;
 	} else
 		rr = r;
@@ -1553,7 +1494,6 @@ end:
 	ret = 1;
 err:
 	bn_check_top(r);
-	BN_free(rr);
 	return (ret);
 }
 
@@ -1870,11 +1810,11 @@ static int BN_div_internal(BIGNUM *dv, BIGNUM *rm, const BIGNUM *num, const BIGN
 		return (1);
 	}
 
-	tmp = BN_create();
-	snum = BN_create();
-	sdiv = BN_create();
+	tmp = BN_new();
+	snum = BN_new();
+	sdiv = BN_new();
 	if (dv == NULL)
-		res = BN_create();
+		res = BN_new();
 	else
 		res = dv;
     if (tmp == NULL || snum == NULL || sdiv == NULL || res == NULL) {
