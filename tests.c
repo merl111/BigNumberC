@@ -18,6 +18,7 @@ int main(){
     BN_dec2bn(&c, "-123");
 
     BIGNUM *result  = BN_create();
+    BIGNUM *rem = BN_create();
 
     BN_add(result, b, a);
     char *x = BN_bn2dec(result);
@@ -67,10 +68,62 @@ int main(){
     x = BN_bn2dec(result);
     printf("result neg lshift a: %s\n", x);
 
+    BN_dec2bn(&a, "80");
+    BN_dec2bn(&b, "10");
+
+    BN_div(result, rem, a, b);
+    x = BN_bn2dec(result);
+    printf("result division: %s\n", x);
+    x = BN_bn2dec(rem);
+    printf("remainder division: %s\n", x);
+
+    BN_dec2bn(&a, "70");
+    BN_dec2bn(&b, "30");
+
+    BN_div(result, rem, a, b);
+    x = BN_bn2dec(result);
+    printf("2 result division: %s\n", x);
+    x = BN_bn2dec(rem);
+    printf("2 remainder division: %s\n", x);
+
+    BN_dec2bn(&a, "10.5");
+    BN_dec2bn(&b, "1");
+
+    BN_div(result, rem, a, b);
+    x = BN_bn2dec(result);
+    printf("3 result division: %s\n", x);
+    x = BN_bn2dec(rem);
+    printf("3 remainder division: %s\n", x);
+
+
+    BN_dec2bn(&a, "10.5");
+    long res = 0;
+    int ret;
+    ret = BN_bn2long(a, &res);
+    printf("bn2long return: %d\n", ret);
+    printf("bn2long result: %ld\n", res);
+
+
+    BN_dec2bn(&a, "100000000000020");
+    unsigned char *bin;
+    bin = malloc(sizeof(unsigned long) * a->top+10000);
+    printf("num_bytes: %d\n", BN_num_bytes(a));
+    ret = BN_bn2bin(a, bin);
+    printf("num_bytes: %d\n", BN_num_bytes(a));
+
+    for (int i=0; i < BN_num_bytes(a); i++) {
+        printf("%02x", (unsigned int) bin[i]);
+    }
+
+    printf("\n");
+
+
+
     BN_free(a);
     BN_free(b);
     BN_free(c);
     BN_free(result);
+    BN_free(rem);
 
     return 0;
 }

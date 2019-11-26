@@ -9,7 +9,7 @@
 #include <ctype.h>
 
 
-#ifdef _LP64
+//#ifdef _LP64
 #undef	BN_LLONG
 #define BN_ULONG	unsigned long
 #define BN_LONG		long
@@ -28,28 +28,6 @@
 #define BN_DEC_NUM	19
 #define BN_HEX_FMT1	"%lX"
 #define BN_HEX_FMT2	"%016lX"
-#else
-#define BN_ULLONG	unsigned long long
-#define	BN_LLONG
-#define BN_ULONG	unsigned int
-#define BN_LONG		int
-#define BN_BITS		64
-#define BN_BYTES	4
-#define BN_BITS2	32
-#define BN_BITS4	16
-#define BN_MASK		(0xffffffffffffffffLL)
-#define BN_MASK2	(0xffffffffL)
-#define BN_MASK2l	(0xffff)
-#define BN_MASK2h1	(0xffff8000L)
-#define BN_MASK2h	(0xffff0000L)
-#define BN_TBIT		(0x80000000L)
-#define BN_DEC_CONV	(1000000000L)
-#define BN_DEC_FMT1	"%u"
-#define BN_DEC_FMT2	"%09u"
-#define BN_DEC_NUM	9
-#define BN_HEX_FMT1	"%X"
-#define BN_HEX_FMT2	"%08X"
-#endif
 
 #define BN_FLG_MALLOCED		0x01
 #define BN_FLG_STATIC_DATA	0x02
@@ -58,12 +36,46 @@
                                       * BN_div() will call BN_div_no_branch,
                                       * BN_mod_inverse() will call BN_mod_inverse_no_branch.
                                       */
+
 /** BN_is_negative returns 1 if the BIGNUM is negative
  * \param  a  pointer to the BIGNUM object
  * \return 1 if a < 0 and 0 otherwise
  */
 #define BN_is_negative(a) ((a)->neg != 0)
 
+#ifdef BN_DEBUG_RAND
+#define bn_clear_top2max(a) \
+	{ \
+	int      ind = (a)->dmax - (a)->top; \
+	BN_ULONG *ftl = &(a)->d[(a)->top-1]; \
+	for (; ind != 0; ind--) \
+		*(++ftl) = 0x0; \
+	}
+#else
+#define bn_clear_top2max(a)
+#endif
+
+#define LBITS(a)	((a)&BN_MASK2l)
+#define HBITS(a)	(((a)>>BN_BITS4)&BN_MASK2l)
+#define	L2HBITS(a)	(((a)<<BN_BITS4)&BN_MASK2)
+
+#define mul64(l,h,bl,bh) \
+	{ \
+	BN_ULONG m,m1,lt,ht; \
+ \
+	lt=l; \
+	ht=h; \
+	m =(bh)*(lt); \
+	lt=(bl)*(lt); \
+	m1=(bl)*(ht); \
+	ht =(bh)*(ht); \
+	m=(m+m1)&BN_MASK2; if (m < m1) ht+=L2HBITS((BN_ULONG)1); \
+	ht+=HBITS(m); \
+	m1=L2HBITS(m); \
+	lt=(lt+m1)&BN_MASK2; if (lt < m1) ht++; \
+	(l)=lt; \
+	(h)=ht; \
+	}
 
 struct bignum_st {
 	BN_ULONG *d;	/* Pointer to an array of 'BN_BITS2' bit chunks. */
@@ -75,7 +87,6 @@ struct bignum_st {
 };
 
 typedef struct bignum_st BIGNUM;
-typedef struct bignum_ctx BN_CTX;
 
 /* forward declerations start */
 int	BN_sub(BIGNUM *r, const BIGNUM *a, const BIGNUM *b);
@@ -418,17 +429,12 @@ BN_ULONG bn_mul_words(BN_ULONG *rp, const BN_ULONG *ap, int num, BN_ULONG w)
 
 BN_ULONG BN_mod_word(const BIGNUM *a, BN_ULONG w)
 {
-#ifndef BN_LLONG
 	BN_ULONG ret = 0;
-#else
-	BN_ULLONG ret = 0;
-#endif
 	int i;
 
 	if (w == 0)
 		return (BN_ULONG) - 1;
 
-#ifndef BN_ULLONG
 	/* If |w| is too long and we don't have |BN_ULLONG| then we need to fall back
 	* to using |BN_div_word|. */
 	if (w > ((BN_ULONG)1 << BN_BITS4)) {
@@ -440,7 +446,6 @@ BN_ULONG BN_mod_word(const BIGNUM *a, BN_ULONG w)
 		BN_free(tmp);
 		return ret;
 	}
-#endif
 
 	bn_check_top(a);
 	w &= BN_MASK2;
@@ -1191,6 +1196,18 @@ BN_clear(BIGNUM *a)
 	a->neg = 0;
 }
 
+/* only works if there is just one limb */
+int BN_bn2long(const BIGNUM *a, long *result)
+{
+
+    if (a->top > 1) {
+        return -1;
+    }
+
+    *result = (a->neg) ? -(*a->d) : (*a->d);
+    return 0;
+}
+
 char *BN_bn2dec(const BIGNUM *a)
 {
 	int i = 0, num, bn_data_num, ok = 0;
@@ -1492,9 +1509,7 @@ int BN_mul(BIGNUM *r, const BIGNUM *a, const BIGNUM *b)
 	}
 	top = al + bl;
 
-	//BN_CTX_start(ctx);
 	if ((r == a) || (r == b)) {
-		//if ((rr = BN_CTX_get(ctx)) == NULL)
 		if ((rr = BN_create()) == NULL)
 			goto err;
 	} else
@@ -1538,7 +1553,6 @@ end:
 	ret = 1;
 err:
 	bn_check_top(r);
-	//BN_CTX_end(ctx);
 	BN_free(rr);
 	return (ret);
 }
@@ -1755,5 +1769,329 @@ int BN_sub(BIGNUM *r, const BIGNUM *a, const BIGNUM *b)
 	bn_check_top(r);
 	return ret;
 }
+
+int BN_cmp(const BIGNUM *a, const BIGNUM *b)
+{
+	int i;
+	int gt, lt;
+	BN_ULONG t1, t2;
+
+	if ((a == NULL) || (b == NULL)) {
+		if (a != NULL)
+			return (-1);
+		else if (b != NULL)
+			return (1);
+		else
+			return (0);
+	}
+
+	bn_check_top(a);
+	bn_check_top(b);
+
+	if (a->neg != b->neg) {
+		if (a->neg)
+			return (-1);
+		else
+			return (1);
+	}
+	if (a->neg == 0) {
+		gt = 1;
+		lt = -1;
+	} else {
+		gt = -1;
+		lt = 1;
+	}
+
+	if (a->top > b->top)
+		return (gt);
+	if (a->top < b->top)
+		return (lt);
+	for (i = a->top - 1; i >= 0; i--) {
+		t1 = a->d[i];
+		t2 = b->d[i];
+		if (t1 > t2)
+			return (gt);
+		if (t1 < t2)
+			return (lt);
+	}
+	return (0);
+}
+
+/* BN_div computes  dv := num / divisor,  rounding towards
+ * zero, and sets up rm  such that  dv*divisor + rm = num  holds.
+ * Thus:
+ *     dv->neg == num->neg ^ divisor->neg  (unless the result is zero)
+ *     rm->neg == num->neg                 (unless the remainder is zero)
+ * If 'dv' or 'rm' is NULL, the respective value is not returned.
+ */
+static int BN_div_internal(BIGNUM *dv, BIGNUM *rm, const BIGNUM *num, const BIGNUM *divisor,
+    int ct)
+{
+	int norm_shift, i, loop;
+	BIGNUM *tmp, wnum, *snum, *sdiv, *res;
+	BN_ULONG *resp, *wnump;
+	BN_ULONG d0, d1;
+	int num_n, div_n;
+	int no_branch = 0;
+
+	/* Invalid zero-padding would have particularly bad consequences
+	 * in the case of 'num', so don't just rely on bn_check_top() for this one
+	 * (bn_check_top() works only for BN_DEBUG builds) */
+	if (num->top > 0 && num->d[num->top - 1] == 0) {
+		//BNerror(BN_R_NOT_INITIALIZED);
+		printf("ret1\n");
+		return 0;
+	}
+
+	bn_check_top(num);
+
+	if (ct)
+		no_branch = 1;
+
+	bn_check_top(dv);
+	bn_check_top(rm);
+	/* bn_check_top(num); */ /* 'num' has been checked already */
+	bn_check_top(divisor);
+
+	if (BN_is_zero(divisor)) {
+		//BNerror(BN_R_DIV_BY_ZERO);
+		printf("ret2\n");
+		return (0);
+	}
+
+	if (!no_branch && BN_ucmp(num, divisor) < 0) {
+		if (rm != NULL) {
+			if (BN_copy(rm, num) == NULL)
+				return (0);
+		}
+		printf("ret3\n");
+		if (dv != NULL)
+			BN_zero(dv);
+		return (1);
+	}
+
+	tmp = BN_create();
+	snum = BN_create();
+	sdiv = BN_create();
+	if (dv == NULL)
+		res = BN_create();
+	else
+		res = dv;
+    if (tmp == NULL || snum == NULL || sdiv == NULL || res == NULL) {
+		printf("ret4\n");
+		goto err;
+    }
+
+	/* First we normalise the numbers */
+	norm_shift = BN_BITS2 - ((BN_num_bits(divisor)) % BN_BITS2);
+    if (!(BN_lshift(sdiv, divisor, norm_shift))) {
+		printf("ret5\n");
+		goto err;
+    }
+	sdiv->neg = 0;
+	norm_shift += BN_BITS2;
+    if (!(BN_lshift(snum, num, norm_shift))) {
+		printf("ret6\n");
+		goto err;
+    }
+
+	snum->neg = 0;
+
+	if (no_branch) {
+		/* Since we don't know whether snum is larger than sdiv,
+		 * we pad snum with enough zeroes without changing its
+		 * value.
+		 */
+		if (snum->top <= sdiv->top + 1) {
+            if (bn_wexpand(snum, sdiv->top + 2) == NULL) {
+		        printf("ret7\n");
+				goto err;
+
+            }
+
+			for (i = snum->top; i < sdiv->top + 2; i++)
+				snum->d[i] = 0;
+			snum->top = sdiv->top + 2;
+		} else {
+            if (bn_wexpand(snum, snum->top + 1) == NULL) {
+		        printf("ret7\n");
+				goto err;
+
+            }
+			snum->d[snum->top] = 0;
+			snum->top ++;
+		}
+	}
+
+	div_n = sdiv->top;
+	num_n = snum->top;
+	loop = num_n - div_n;
+	/* Lets setup a 'window' into snum
+	 * This is the part that corresponds to the current
+	 * 'area' being divided */
+	wnum.neg = 0;
+	wnum.d = &(snum->d[loop]);
+	wnum.top = div_n;
+	/* only needed when BN_ucmp messes up the values between top and max */
+	wnum.dmax  = snum->dmax - loop; /* so we don't step out of bounds */
+	wnum.flags = snum->flags | BN_FLG_STATIC_DATA;
+
+	/* Get the top 2 words of sdiv */
+	/* div_n=sdiv->top; */
+	d0 = sdiv->d[div_n - 1];
+	d1 = (div_n == 1) ? 0 : sdiv->d[div_n - 2];
+
+	/* pointer to the 'top' of snum */
+	wnump = &(snum->d[num_n - 1]);
+
+	/* Setup to 'res' */
+	res->neg = (num->neg ^ divisor->neg);
+    if (!bn_wexpand(res, (loop + 1))) {
+		goto err;
+    }
+	res->top = loop - no_branch;
+	resp = &(res->d[loop - 1]);
+
+	/* space for temp */
+    if (!bn_wexpand(tmp, (div_n + 1))) {
+		goto err;
+    }
+
+	if (!no_branch) {
+		if (BN_ucmp(&wnum, sdiv) >= 0) {
+			/* If BN_DEBUG_RAND is defined BN_ucmp changes (via
+			 * bn_pollute) the const bignum arguments =>
+			 * clean the values between top and max again */
+			bn_clear_top2max(&wnum);
+			bn_sub_words(wnum.d, wnum.d, sdiv->d, div_n);
+			*resp = 1;
+		} else
+			res->top--;
+	}
+
+	/* if res->top == 0 then clear the neg value otherwise decrease
+	 * the resp pointer */
+	if (res->top == 0)
+		res->neg = 0;
+	else
+		resp--;
+
+	for (i = 0; i < loop - 1; i++, wnump--, resp--) {
+		BN_ULONG q, l0;
+		/* the first part of the loop uses the top two words of
+		 * snum and sdiv to calculate a BN_ULONG q such that
+		 * | wnum - sdiv * q | < sdiv */
+		BN_ULONG n0, n1, rem = 0;
+
+		n0 = wnump[0];
+		n1 = wnump[-1];
+		if (n0 == d0)
+			q = BN_MASK2;
+		else 			/* n0 < d0 */
+		{
+			BN_ULONG t2l, t2h;
+
+			q = bn_div_words(n0, n1, d0);
+			rem = (n1 - q*d0)&BN_MASK2;
+
+			{
+				BN_ULONG ql, qh;
+				t2l = LBITS(d1);
+				t2h = HBITS(d1);
+				ql = LBITS(q);
+				qh = HBITS(q);
+				mul64(t2l, t2h, ql, qh); /* t2=(BN_ULLONG)d1*q; */
+			}
+
+			for (;;) {
+				if ((t2h < rem) ||
+				    ((t2h == rem) && (t2l <= wnump[-2])))
+					break;
+				q--;
+				rem += d0;
+				if (rem < d0)
+					break; /* don't let rem overflow */
+				if (t2l < d1)
+					t2h--;
+				t2l -= d1;
+			}
+		}
+
+		l0 = bn_mul_words(tmp->d, sdiv->d, div_n, q);
+		tmp->d[div_n] = l0;
+		wnum.d--;
+		/* ingore top values of the bignums just sub the two
+		 * BN_ULONG arrays with bn_sub_words */
+		if (bn_sub_words(wnum.d, wnum.d, tmp->d, div_n + 1)) {
+			/* Note: As we have considered only the leading
+			 * two BN_ULONGs in the calculation of q, sdiv * q
+			 * might be greater than wnum (but then (q-1) * sdiv
+			 * is less or equal than wnum)
+			 */
+			q--;
+			if (bn_add_words(wnum.d, wnum.d, sdiv->d, div_n))
+				/* we can't have an overflow here (assuming
+				 * that q != 0, but if q == 0 then tmp is
+				 * zero anyway) */
+				(*wnump)++;
+		}
+		/* store part of the result */
+		*resp = q;
+	}
+	bn_correct_top(snum);
+	if (rm != NULL) {
+		/* Keep a copy of the neg flag in num because if rm==num
+		 * BN_rshift() will overwrite it.
+		 */
+		int neg = num->neg;
+		BN_rshift(rm, snum, norm_shift);
+		if (!BN_is_zero(rm))
+			rm->neg = neg;
+		bn_check_top(rm);
+	}
+	if (no_branch)
+		bn_correct_top(res);
+
+	BN_free(tmp);
+	BN_free(snum);
+	BN_free(sdiv);
+
+	return (1);
+
+err:
+
+	bn_check_top(rm);
+
+	BN_free(tmp);
+	BN_free(snum);
+	BN_free(sdiv);
+    BN_free(res);
+
+	return (0);
+}
+
+int BN_div(BIGNUM *dv, BIGNUM *rm, const BIGNUM *num, const BIGNUM *divisor)
+{
+	int ct = ((BN_get_flags(num, BN_FLG_CONSTTIME) != 0) ||
+	    (BN_get_flags(divisor, BN_FLG_CONSTTIME) != 0));
+
+	printf("ct: %d\n", ct);
+
+	return BN_div_internal(dv, rm, num, divisor, ct);
+}
+
+int
+BN_div_nonct(BIGNUM *dv, BIGNUM *rm, const BIGNUM *num, const BIGNUM *divisor)
+{
+	return BN_div_internal(dv, rm, num, divisor, 0);
+}
+
+int
+BN_div_ct(BIGNUM *dv, BIGNUM *rm, const BIGNUM *num, const BIGNUM *divisor)
+{
+	return BN_div_internal(dv, rm, num, divisor, 1);
+}
+
+
 /* public functions end */
 #endif
